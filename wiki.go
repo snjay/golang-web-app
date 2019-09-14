@@ -113,12 +113,8 @@ created.
 http.Redirect adds an HTTP status code of http.StatusFound (302)
 and a Location header to the HTTP response.
 */
-func viewHandler(w http.ResponseWriter, r *http.Request) {
+func viewHandler(w http.ResponseWriter, r *http.Request, title string) {
 	fmt.Println("view: " + r.URL.Path)
-	title, err := getTitle(w, r)
-	if err != nil {
-		return
-	}
 	p, err := loadPage(title)
 	if err != nil {
 		http.Redirect(w, r, "/edit/"+title, http.StatusFound)
@@ -130,12 +126,7 @@ func viewHandler(w http.ResponseWriter, r *http.Request) {
 editHandler loads the page, (or if it doesn't exist, creates an
 empty Page struct) and then displayes a HTML form.
 */
-func editHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("edit: " + r.URL.Path)
-	title, err := getTitle(w, r)
-	if err != nil {
-		return
-	}
+func editHandler(w http.ResponseWriter, r *http.Request, title string) {
 	p, err := loadPage(title)
 	if err != nil {
 		// if page doesn't exist, create a new one with the
@@ -152,15 +143,11 @@ StatusInternalServerError is thrown if file cannot be saved. This
 is so that any errors that occur during p.save() are reported to
 the user.
 */
-func saveHandler(w http.ResponseWriter, r *http.Request) {
+func saveHandler(w http.ResponseWriter, r *http.Request, title string) {
 	fmt.Println("save: " + r.URL.Path)
-	title, err := getTitle(w, r)
-	if err != nil {
-		return
-	}
 	body := r.FormValue("body")
 	p := &Page{Title: title, Body: []byte(body)}
-	err = p.save()
+	err := p.save()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -168,9 +155,34 @@ func saveHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/view/"+title, http.StatusFound)
 }
 
+/*
+makeHandler takes a function of the type (http.ResponseWriter,
+r *http.Request) and returns a function of type http.HandlerFunc. This
+allows you to repeat the validation/error checking for each of the end
+points at once. (Function literals and closures)
+
+The closure returned by makeHandler is a function that takes an
+http.ResponseWriter and *http.Request (i.e. an http.HandlerFunc).
+The closure extracts the title from the request path and valides it with
+the regexp. If the title is invalid, an error will be written to the
+ResponseWriter using http.NotFound. If the title is valid, the enclosed
+handler function fn will be called with the ResponseWriter, Request and
+title as arguments
+*/
+func makeHandler(fn func(http.ResponseWriter, *http.Request, string)) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		m := validPath.FindStringSubmatch(r.URL.Path)
+		if m == nil {
+			http.NotFound(w, r)
+			return
+		}
+		fn(w, r, m[2])
+	}
+}
+
 func main() {
-	http.HandleFunc("/view/", viewHandler)
-	http.HandleFunc("/edit/", editHandler)
-	http.HandleFunc("/save/", saveHandler)
+	http.HandleFunc("/view/", makeHandler(viewHandler))
+	http.HandleFunc("/edit/", makeHandler(editHandler))
+	http.HandleFunc("/save/", makeHandler(saveHandler))
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
