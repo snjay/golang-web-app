@@ -1,11 +1,13 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"html/template"
 	"io/ioutil"
 	"log"
 	"net/http"
+	"regexp"
 )
 
 /*
@@ -16,6 +18,44 @@ will be doing
 type Page struct {
 	Title string
 	Body  []byte // Byte slice.
+}
+
+/*
+Cache template to reduce inefficiencies when calling renderTemplate
+
+template.Must is a wrapper that panics when passed a non-nil error
+value, otherwise it returns the *Template unaltered. A panic is
+appropriate here; if the templates can't be loaded, the only
+sensible thing to do is exit the program
+*/
+var templates = template.Must(
+	template.ParseFiles("edit.html", "view.html"))
+
+/*
+Disallow invalid path names (e.g. ../) to be viewed/edited on the
+server's file system.
+
+regexp.MustCompile will parse and compile the regexp and return
+regextp.Regexp. Note, MustCompile is distinct from Compile in that
+it will panic if the expression compilation fails, while Compile
+*/
+var validPath = regexp.MustCompile("^/(edit|save|view)/([a-zA-Z0-9]+)$")
+
+/*
+getTitle uses the validPath regexp to validate the path and extract
+the page title. If title is valid, it will return with a nil error. If
+the title is invalid, the function will return a 400 status code to the
+HTTP connection and return a error to the handler
+
+errors.New allows you to write your own errors with custom messages
+*/
+func getTitle(w http.ResponseWriter, r *http.Request) (string, error) {
+	m := validPath.FindStringSubmatch(r.URL.Path)
+	if m == nil {
+		http.NotFound(w, r)
+		return "", errors.New("Invalid Page Title")
+	}
+	return m[2], nil
 }
 
 /*
@@ -53,21 +93,13 @@ func loadPage(title string) (*Page, error) {
 }
 
 /*
-t.ParseFiles reads the contents of edit.html file and
-returns a ptr to a template.Template. If there is an error whilst
-parsing the file, then a http.Error is thrown with a 500 status
-code to indicate internal server error
-
-t.Execute executes the template, writing the generated HTML to the
-http.ResponseWriter.
+templates.ExecuteTemplate executes the parsed cached template,
+and writes the generated HTML to the http.ResponseWriter. If there
+is an error whilst parsing the file, then a http.Error is thrown
+with a 500 status code to indicate internal server error
 */
 func renderTemplate(w http.ResponseWriter, tmpl string, p *Page) {
-	t, err := template.ParseFiles(tmpl + ".html")
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	err = t.Execute(w, p)
+	err := templates.ExecuteTemplate(w, tmpl+".html", p)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
@@ -83,7 +115,10 @@ and a Location header to the HTTP response.
 */
 func viewHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("view: " + r.URL.Path)
-	title := r.URL.Path[len("/view/"):]
+	title, err := getTitle(w, r)
+	if err != nil {
+		return
+	}
 	p, err := loadPage(title)
 	if err != nil {
 		http.Redirect(w, r, "/edit/"+title, http.StatusFound)
@@ -92,12 +127,15 @@ func viewHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 /*
-editHandler loads the page, (or if it doesn't exist, creates an empty
-Page struct) and then displayes a HTML form.
+editHandler loads the page, (or if it doesn't exist, creates an
+empty Page struct) and then displayes a HTML form.
 */
 func editHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("edit: " + r.URL.Path)
-	title := r.URL.Path[len("/view/"):]
+	title, err := getTitle(w, r)
+	if err != nil {
+		return
+	}
 	p, err := loadPage(title)
 	if err != nil {
 		// if page doesn't exist, create a new one with the
@@ -116,10 +154,13 @@ the user.
 */
 func saveHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("save: " + r.URL.Path)
-	title := r.URL.Path[len("/save/"):]
+	title, err := getTitle(w, r)
+	if err != nil {
+		return
+	}
 	body := r.FormValue("body")
 	p := &Page{Title: title, Body: []byte(body)}
-	err := p.save()
+	err = p.save()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
