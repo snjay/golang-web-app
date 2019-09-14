@@ -4,7 +4,9 @@
 
 ```bash
 $ go build wiki.go && ./wiki
-This is a sample Page.
+Starting server...
+For e.g. view/edit a file at http://localhost:8080/view/testFile
+Quit the server with Ctrl+C
 ```
 
-Visit `httpslocalhost:8080/view/FILENAME` where `FILENAME` is the name of a .txt file that is located in the same directory as where you are running the server
+Visit `localhost:8080/view/FILENAME` where `FILENAME` is the name of a .txt file that is located in the same directory as where you are running the server.

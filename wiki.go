@@ -184,5 +184,9 @@ func main() {
 	http.HandleFunc("/view/", makeHandler(viewHandler))
 	http.HandleFunc("/edit/", makeHandler(editHandler))
 	http.HandleFunc("/save/", makeHandler(saveHandler))
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	portNum := "8080"
+	fmt.Println("Starting server...")
+	fmt.Printf("For e.g. view/edit a file at http://localhost:%s/view/%s\n", portNum, "testFile")
+	fmt.Println("Quit the server with Ctrl+C")
+	log.Fatal(http.ListenAndServe(":"+portNum, nil))
 }
