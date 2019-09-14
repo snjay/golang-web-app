@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"html/template"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -22,6 +23,7 @@ save function takes in a pointer to a Page, writes the file
 and returns a value of type error (because that's the return
 type of ioutil.Writefile). This method saves the Page's Body
 to a text file. To keep it simple, make Title the file's name.
+
 The 0600 used in the WriteFile function is octal flag for
 read and write (rw) permissions.
 */
@@ -35,10 +37,11 @@ func (p *Page) save() error {
 loadPage constructs file name from title parameter, reads
 the file's contents into a new variable, body and returns
 a ptr to Page literal constructed with the proper title + body
-values and also an error (if thrown). Callers of this function
-can check 2nd parameter, if it is nil, then it has successfully
-loaded a Page, otherwise an error was thrown – which can be
-handled
+values and also an error (if thrown).
+
+Callers of this function can check 2nd parameter, if it is nil,
+then it has successfully loaded a Page, otherwise an error was
+thrown – which can be handled accordingly
 */
 func loadPage(title string) (*Page, error) {
 	filename := title + ".txt"
@@ -49,17 +52,68 @@ func loadPage(title string) (*Page, error) {
 	return &Page{Title: title, Body: body}, nil
 }
 
+/*
+t.ParseFiles reads the contents of edit.html file and
+returns a ptr to a template.Template
+
+t.Execute executes the template, writing the generated HTML to the
+http.ResponseWriter. The .Title and .Body dotted identifiers refer
+to p.Title and p.Body
+*/
+func renderTemplate(w http.ResponseWriter, tmpl string, p *Page) {
+	t, _ := template.ParseFiles(tmpl + ".html")
+	t.Execute(w, p)
+}
+
+/*
+viewHandler allows you to view a wiki page. If it doesn't exist
+It redirects the client to edit the Page so the content may be
+created.
+
+http.Redirect adds an HTTP status code of http.StatusFound (302)
+and a Location header to the HTTP response.
+*/
 func viewHandler(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("view: " + r.URL.Path)
 	title := r.URL.Path[len("/view/"):]
-	p, _ := loadPage(title)
-	fmt.Fprintf(w, "<h1>%s</h1><div>%s</div>", p.Title, p.Body)
+	p, err := loadPage(title)
+	if err != nil {
+		http.Redirect(w, r, "/edit/"+title, http.StatusFound)
+	}
+	renderTemplate(w, "view", p)
+}
+
+/*
+editHandler loads the page, (or if it doesn't exist, creates an empty
+Page struct) and then displayes a HTML form.
+*/
+func editHandler(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("edit: " + r.URL.Path)
+	title := r.URL.Path[len("/view/"):]
+	p, err := loadPage(title)
+	if err != nil {
+		// if page doesn't exist, create a new one with the
+		// Page struct
+		p = &Page{Title: title}
+	}
+	renderTemplate(w, "edit", p)
+}
+
+/*
+saveHandler handles submission of forms located on the edit pages.
+*/
+func saveHandler(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("save: " + r.URL.Path)
+	title := r.URL.Path[len("/save/"):]
+	body := r.FormValue("body")
+	p := &Page{Title: title, Body: []byte(body)}
+	p.save()
+	http.Redirect(w, r, "/view/"+title, http.StatusFound)
 }
 
 func main() {
 	http.HandleFunc("/view/", viewHandler)
+	http.HandleFunc("/edit/", editHandler)
+	http.HandleFunc("/save/", saveHandler)
 	log.Fatal(http.ListenAndServe(":8080", nil))
-	// p1 := &Page{Title: "TestPage", Body: []byte("This is a sample page")}
-	// p1.save()
-	// p2, _ := loadPage("TestPage")
-	// fmt.Println(string(p2.Body))
 }
