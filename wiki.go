@@ -54,15 +54,23 @@ func loadPage(title string) (*Page, error) {
 
 /*
 t.ParseFiles reads the contents of edit.html file and
-returns a ptr to a template.Template
+returns a ptr to a template.Template. If there is an error whilst
+parsing the file, then a http.Error is thrown with a 500 status
+code to indicate internal server error
 
 t.Execute executes the template, writing the generated HTML to the
-http.ResponseWriter. The .Title and .Body dotted identifiers refer
-to p.Title and p.Body
+http.ResponseWriter.
 */
 func renderTemplate(w http.ResponseWriter, tmpl string, p *Page) {
-	t, _ := template.ParseFiles(tmpl + ".html")
-	t.Execute(w, p)
+	t, err := template.ParseFiles(tmpl + ".html")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	err = t.Execute(w, p)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }
 
 /*
@@ -101,13 +109,21 @@ func editHandler(w http.ResponseWriter, r *http.Request) {
 
 /*
 saveHandler handles submission of forms located on the edit pages.
+
+StatusInternalServerError is thrown if file cannot be saved. This
+is so that any errors that occur during p.save() are reported to
+the user.
 */
 func saveHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("save: " + r.URL.Path)
 	title := r.URL.Path[len("/save/"):]
 	body := r.FormValue("body")
 	p := &Page{Title: title, Body: []byte(body)}
-	p.save()
+	err := p.save()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	http.Redirect(w, r, "/view/"+title, http.StatusFound)
 }
 

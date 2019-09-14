@@ -1,13 +1,15 @@
 <h1>
     <!-- 
-    Template literals are enclosed in double 
-    curly braces 
+    Template literals are enclosed in double  curly braces 
     -->
     Editing {{.Title}}
 </h1>
 
 <form action="/save/{{.Title}}" method="POST">
     <div>
+        <!-- 
+        The .Title and .Body dotted identifiers refer to p.Title and p.Body.  
+        -->
         <textarea name="body" rows="20" cols="80">{{printf "%s" .Body}}</textarea>
     </div>
     <div>
